@@ -3,6 +3,12 @@ const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const archiver = require('archiver');
+
+const pdfMergeService = require('./services/pdfMerge');
+const pdfSplitService = require('./services/pdfSplit');
+const pdfCompressService = require('./services/pdfCompress');
+const pdfConvertService = require('./services/pdfConvert');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -24,6 +30,9 @@ const upload = multer({
 if (!fs.existsSync('temp')) {
   fs.mkdirSync('temp');
 }
+if (!fs.existsSync('temp/output')) {
+  fs.mkdirSync('temp/output', { recursive: true });
+}
 
 // Routes
 app.get('/', (req, res) => {
@@ -34,7 +43,9 @@ app.get('/', (req, res) => {
       'POST /api/merge - Merge multiple PDF files',
       'POST /api/split - Split PDF file',
       'POST /api/compress - Compress PDF file',
-      'POST /api/convert - Convert PDF to other formats'
+      'POST /api/convert/to-pdf - Convert files to PDF',
+      'POST /api/convert/from-pdf - Convert PDF to other formats',
+      'GET /api/health - Health check'
     ]
   });
 });
@@ -42,8 +53,37 @@ app.get('/', (req, res) => {
 // PDF Merge endpoint
 app.post('/api/merge', upload.array('pdfs'), async (req, res) => {
   try {
-    // TODO: Implement PDF merge functionality
-    res.status(501).json({ error: 'PDF merge not implemented yet' });
+    if (!req.files || req.files.length < 2) {
+      return res.status(400).json({ error: 'At least 2 PDF files are required' });
+    }
+
+    const filePaths = req.files.map(file => file.path);
+    const outputPath = `temp/output/merged_${Date.now()}.pdf`;
+
+    const metadata = {
+      title: req.body.title || 'Merged PDF',
+      author: req.body.author || 'PDF Tools Self-Hosted'
+    };
+
+    const result = await pdfMergeService.mergeWithMetadata(filePaths, outputPath, metadata);
+
+    filePaths.forEach(filePath => {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    });
+
+    res.download(outputPath, 'merged.pdf', (err) => {
+      if (err) {
+        console.error('Download error:', err);
+      }
+      setTimeout(() => {
+        if (fs.existsSync(outputPath)) {
+          fs.unlinkSync(outputPath);
+        }
+      }, 30000);
+    });
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -52,8 +92,64 @@ app.post('/api/merge', upload.array('pdfs'), async (req, res) => {
 // PDF Split endpoint
 app.post('/api/split', upload.single('pdf'), async (req, res) => {
   try {
-    // TODO: Implement PDF split functionality
-    res.status(501).json({ error: 'PDF split not implemented yet' });
+    if (!req.file) {
+      return res.status(400).json({ error: 'PDF file is required' });
+    }
+
+    const inputPath = req.file.path;
+    const outputDir = `temp/output/split_${Date.now()}`;
+    fs.mkdirSync(outputDir, { recursive: true });
+
+    let options = {};
+
+    if (req.body.pageRanges) {
+      options.pageRanges = JSON.parse(req.body.pageRanges);
+    } else if (req.body.specificPages) {
+      options.specificPages = JSON.parse(req.body.specificPages);
+    }
+
+    const result = await pdfSplitService.splitPDF(inputPath, outputDir, options);
+
+    if (fs.existsSync(inputPath)) {
+      fs.unlinkSync(inputPath);
+    }
+
+    if (result.splitFiles.length === 1) {
+      const singleFile = result.splitFiles[0];
+      res.download(singleFile.outputPath, `page_${singleFile.pageNumber || 'extracted'}.pdf`, (err) => {
+        if (err) console.error('Download error:', err);
+        setTimeout(() => {
+          if (fs.existsSync(outputDir)) {
+            fs.rmSync(outputDir, { recursive: true, force: true });
+          }
+        }, 30000);
+      });
+    } else {
+      const archive = archiver('zip', { zlib: { level: 9 } });
+      const zipPath = `temp/output/split_pages_${Date.now()}.zip`;
+      const output = fs.createWriteStream(zipPath);
+
+      archive.pipe(output);
+
+      result.splitFiles.forEach(file => {
+        archive.file(file.outputPath, { name: path.basename(file.outputPath) });
+      });
+
+      await archive.finalize();
+
+      res.download(zipPath, 'split_pages.zip', (err) => {
+        if (err) console.error('Download error:', err);
+        setTimeout(() => {
+          if (fs.existsSync(outputDir)) {
+            fs.rmSync(outputDir, { recursive: true, force: true });
+          }
+          if (fs.existsSync(zipPath)) {
+            fs.unlinkSync(zipPath);
+          }
+        }, 30000);
+      });
+    }
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -62,18 +158,177 @@ app.post('/api/split', upload.single('pdf'), async (req, res) => {
 // PDF Compress endpoint
 app.post('/api/compress', upload.single('pdf'), async (req, res) => {
   try {
-    // TODO: Implement PDF compress functionality
-    res.status(501).json({ error: 'PDF compress not implemented yet' });
+    if (!req.file) {
+      return res.status(400).json({ error: 'PDF file is required' });
+    }
+
+    const inputPath = req.file.path;
+    const outputPath = `temp/output/compressed_${Date.now()}.pdf`;
+    const quality = req.body.quality || 'medium';
+
+    const result = await pdfCompressService.compressPDF(inputPath, outputPath, quality);
+
+    if (fs.existsSync(inputPath)) {
+      fs.unlinkSync(inputPath);
+    }
+
+    res.download(outputPath, 'compressed.pdf', (err) => {
+      if (err) {
+        console.error('Download error:', err);
+      }
+      setTimeout(() => {
+        if (fs.existsSync(outputPath)) {
+          fs.unlinkSync(outputPath);
+        }
+      }, 30000);
+    });
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// PDF Convert endpoint
-app.post('/api/convert', upload.single('pdf'), async (req, res) => {
+// Convert to PDF endpoints
+app.post('/api/convert/to-pdf', upload.array('files'), async (req, res) => {
   try {
-    // TODO: Implement PDF convert functionality
-    res.status(501).json({ error: 'PDF convert not implemented yet' });
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'At least one file is required' });
+    }
+
+    const file = req.files[0];
+    const ext = path.extname(file.originalname).toLowerCase();
+    const outputPath = `temp/output/converted_${Date.now()}.pdf`;
+
+    let result;
+
+    if (['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff'].includes(ext)) {
+      const filePaths = req.files.map(f => f.path);
+      result = await pdfConvertService.imageToPDF(filePaths, outputPath, {
+        title: req.body.title || 'Converted Images',
+        author: req.body.author || 'PDF Tools Self-Hosted'
+      });
+    } else if (ext === '.docx') {
+      result = await pdfConvertService.wordToPDF(file.path, outputPath);
+    } else {
+      return res.status(400).json({ error: 'Unsupported file format' });
+    }
+
+    req.files.forEach(file => {
+      if (fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+    });
+
+    res.download(outputPath, 'converted.pdf', (err) => {
+      if (err) console.error('Download error:', err);
+      setTimeout(() => {
+        if (fs.existsSync(outputPath)) {
+          fs.unlinkSync(outputPath);
+        }
+      }, 30000);
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Convert from PDF endpoints
+app.post('/api/convert/from-pdf', upload.single('pdf'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'PDF file is required' });
+    }
+
+    const inputPath = req.file.path;
+    const convertTo = req.body.convertTo || 'png';
+
+    let result;
+
+    if (['png', 'jpeg', 'gif'].includes(convertTo)) {
+      const outputDir = `temp/output/pdf_to_images_${Date.now()}`;
+      fs.mkdirSync(outputDir, { recursive: true });
+
+      result = await pdfConvertService.pdfToImages(inputPath, outputDir, {
+        format: convertTo,
+        density: parseInt(req.body.density) || 300,
+        quality: parseInt(req.body.quality) || 90
+      });
+
+      if (fs.existsSync(inputPath)) {
+        fs.unlinkSync(inputPath);
+      }
+
+      const archive = archiver('zip', { zlib: { level: 9 } });
+      const zipPath = `temp/output/pdf_images_${Date.now()}.zip`;
+      const output = fs.createWriteStream(zipPath);
+
+      archive.pipe(output);
+
+      result.files.forEach(file => {
+        archive.file(file.path, { name: file.name });
+      });
+
+      await archive.finalize();
+
+      res.download(zipPath, `pdf_images.zip`, (err) => {
+        if (err) console.error('Download error:', err);
+        setTimeout(() => {
+          if (fs.existsSync(outputDir)) {
+            fs.rmSync(outputDir, { recursive: true, force: true });
+          }
+          if (fs.existsSync(zipPath)) {
+            fs.unlinkSync(zipPath);
+          }
+        }, 30000);
+      });
+
+    } else if (convertTo === 'txt') {
+      const outputPath = `temp/output/extracted_text_${Date.now()}.txt`;
+      result = await pdfConvertService.pdfToText(inputPath, outputPath);
+
+      if (fs.existsSync(inputPath)) {
+        fs.unlinkSync(inputPath);
+      }
+
+      res.download(outputPath, 'extracted_text.txt', (err) => {
+        if (err) console.error('Download error:', err);
+        setTimeout(() => {
+          if (fs.existsSync(outputPath)) {
+            fs.unlinkSync(outputPath);
+          }
+        }, 30000);
+      });
+
+    } else {
+      return res.status(400).json({ error: 'Unsupported conversion format' });
+    }
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    version: '1.0.0',
+    services: {
+      pdfLibrary: 'pdf-lib',
+      imageProcessing: 'sharp',
+      documentProcessing: 'mammoth'
+    }
+  });
+});
+
+// Supported formats endpoint
+app.get('/api/formats', async (req, res) => {
+  try {
+    const formats = await pdfConvertService.getSupportedFormats();
+    res.json(formats);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
