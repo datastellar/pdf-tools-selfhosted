@@ -5,6 +5,18 @@ const path = require('path');
 const fs = require('fs');
 const archiver = require('archiver');
 
+// Utility function to sanitize filename
+function sanitizeFilename(filename) {
+  if (!filename) return 'merged';
+
+  return filename
+    .replace(/[<>:"/\\|?*]/g, '') // Remove invalid characters
+    .replace(/\s+/g, '_') // Replace spaces with underscores
+    .replace(/\.+$/, '') // Remove trailing dots
+    .substring(0, 200) // Limit length
+    .trim() || 'merged'; // Fallback if empty
+}
+
 const pdfMergeService = require('./services/pdfMerge');
 const pdfSplitService = require('./services/pdfSplit');
 const pdfCompressService = require('./services/pdfCompress');
@@ -73,7 +85,12 @@ app.post('/api/merge', upload.array('pdfs'), async (req, res) => {
       }
     });
 
-    res.download(outputPath, 'merged.pdf', (err) => {
+    // Generate custom filename from title
+    const customTitle = req.body.title || 'Merged PDF';
+    const sanitizedTitle = sanitizeFilename(customTitle);
+    const downloadFilename = `${sanitizedTitle}.pdf`;
+
+    res.download(outputPath, downloadFilename, (err) => {
       if (err) {
         console.error('Download error:', err);
       }
