@@ -1,5 +1,5 @@
 const fs = require('fs');
-const { PDFDocument, PDFImage } = require('pdf-lib');
+const { PDFDocument } = require('pdf-lib');
 
 class PDFCompressService {
   async compressPDF(inputPath, outputPath, quality = 'medium') {
@@ -9,41 +9,12 @@ class PDFCompressService {
 
       const compressionSettings = this.getCompressionSettings(quality);
 
-      const compressedPdf = await PDFDocument.create();
-
-      const pages = pdf.getPages();
-      for (const page of pages) {
-        const newPage = compressedPdf.addPage([page.getWidth(), page.getHeight()]);
-
-        try {
-          const { width, height } = page.getSize();
-
-          newPage.drawPage(page, {
-            x: 0,
-            y: 0,
-            width,
-            height,
-          });
-        } catch (error) {
-          console.warn(`Warning: Could not process page: ${error.message}`);
-        }
-      }
-
-      const metadata = {
-        title: pdf.getTitle() || '',
-        author: pdf.getAuthor() || '',
-        subject: pdf.getSubject() || '',
-        creator: 'PDF Tools Self-Hosted'
-      };
-
-      if (metadata.title) compressedPdf.setTitle(metadata.title);
-      if (metadata.author) compressedPdf.setAuthor(metadata.author);
-      if (metadata.subject) compressedPdf.setSubject(metadata.subject);
-      compressedPdf.setCreator(metadata.creator);
-
-      const compressedBytes = await compressedPdf.save({
+      // Instead of recreating the PDF, optimize the existing one
+      const compressedBytes = await pdf.save({
         useObjectStreams: compressionSettings.useObjectStreams,
-        addDefaultPage: false
+        addDefaultPage: false,
+        objectsPerTick: compressionSettings.objectsPerTick,
+        updateFieldAppearances: false
       });
 
       fs.writeFileSync(outputPath, compressedBytes);
@@ -52,6 +23,36 @@ class PDFCompressService {
       const compressedSize = compressedBytes.length;
       const compressionRatio = ((originalSize - compressedSize) / originalSize * 100).toFixed(2);
 
+      // Additional compression attempt for better results
+      if (compressionSettings.additionalOptimization) {
+        try {
+          const secondPassPdf = await PDFDocument.load(compressedBytes);
+          const secondPassBytes = await secondPassPdf.save({
+            useObjectStreams: true,
+            addDefaultPage: false,
+            objectsPerTick: 50
+          });
+
+          if (secondPassBytes.length < compressedBytes.length) {
+            fs.writeFileSync(outputPath, secondPassBytes);
+            const finalCompressionRatio = ((originalSize - secondPassBytes.length) / originalSize * 100).toFixed(2);
+
+            return {
+              success: true,
+              outputPath,
+              originalSize,
+              compressedSize: secondPassBytes.length,
+              compressionRatio: `${finalCompressionRatio}%`,
+              quality,
+              pageCount: pdf.getPageCount(),
+              optimization: 'two-pass'
+            };
+          }
+        } catch (secondPassError) {
+          console.warn('Second pass optimization failed, using first pass result');
+        }
+      }
+
       return {
         success: true,
         outputPath,
@@ -59,7 +60,8 @@ class PDFCompressService {
         compressedSize,
         compressionRatio: `${compressionRatio}%`,
         quality,
-        pageCount: compressedPdf.getPageCount()
+        pageCount: pdf.getPageCount(),
+        optimization: 'single-pass'
       };
     } catch (error) {
       throw new Error(`PDF compression failed: ${error.message}`);
@@ -70,15 +72,18 @@ class PDFCompressService {
     const settings = {
       low: {
         useObjectStreams: true,
-        imageQuality: 0.3
+        objectsPerTick: 25,
+        additionalOptimization: true
       },
       medium: {
         useObjectStreams: true,
-        imageQuality: 0.6
+        objectsPerTick: 50,
+        additionalOptimization: true
       },
       high: {
         useObjectStreams: false,
-        imageQuality: 0.8
+        objectsPerTick: 100,
+        additionalOptimization: false
       }
     };
 

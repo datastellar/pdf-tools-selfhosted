@@ -16,15 +16,26 @@ class PDFConvertService {
         const ext = path.extname(imagePath).toLowerCase();
 
         let image;
-        if (ext === '.jpg' || ext === '.jpeg') {
-          image = await pdfDoc.embedJpg(imageBytes);
-        } else if (ext === '.png') {
-          image = await pdfDoc.embedPng(imageBytes);
-        } else {
-          const processedImageBytes = await sharp(imageBytes)
+        try {
+          if (ext === '.jpg' || ext === '.jpeg') {
+            image = await pdfDoc.embedJpg(imageBytes);
+          } else if (ext === '.png') {
+            image = await pdfDoc.embedPng(imageBytes);
+          } else {
+            // Convert other formats to JPEG using Sharp
+            const processedImageBytes = await sharp(imageBytes)
+              .jpeg({ quality: 90 })
+              .toBuffer();
+            image = await pdfDoc.embedJpg(processedImageBytes);
+          }
+        } catch (embedError) {
+          console.warn(`Failed to embed ${imagePath} directly, converting with Sharp:`, embedError.message);
+
+          // Fallback: use Sharp to convert the image to a supported format
+          const convertedImageBytes = await sharp(imageBytes)
             .jpeg({ quality: 90 })
             .toBuffer();
-          image = await pdfDoc.embedJpg(processedImageBytes);
+          image = await pdfDoc.embedJpg(convertedImageBytes);
         }
 
         const page = pdfDoc.addPage();
@@ -147,37 +158,77 @@ class PDFConvertService {
       const density = options.density || 300;
       const quality = options.quality || 90;
 
-      const convertOptions = {
-        density,
-        saveFilename: 'page',
-        savePath: outputDir,
-        format,
-        width: options.width || 2480,
-        height: options.height || 3508
-      };
+      // First try with pdf2pic
+      try {
+        const convertOptions = {
+          density,
+          saveFilename: 'page',
+          savePath: outputDir,
+          format,
+          width: options.width || 2480,
+          height: options.height || 3508
+        };
 
-      if (format === 'jpeg') {
-        convertOptions.quality = quality;
+        if (format === 'jpeg') {
+          convertOptions.quality = quality;
+        }
+
+        const convert = pdf2pic.fromPath(pdfPath, convertOptions);
+        const results = await convert.bulk(-1);
+
+        const outputFiles = results.map(result => ({
+          page: result.page,
+          path: result.path,
+          name: result.name,
+          size: fs.statSync(result.path).size
+        }));
+
+        return {
+          success: true,
+          outputDirectory: outputDir,
+          format,
+          totalPages: results.length,
+          files: outputFiles,
+          settings: { density, quality, format },
+          method: 'pdf2pic'
+        };
+      } catch (pdf2picError) {
+        console.warn('pdf2pic failed, falling back to alternative method:', pdf2picError.message);
+
+        // Fallback: Create a simple text representation
+        const pdfBytes = fs.readFileSync(pdfPath);
+        const { PDFDocument: FallbackPDFDocument } = require('pdf-lib');
+        const pdf = await FallbackPDFDocument.load(pdfBytes);
+        const pageCount = pdf.getPageCount();
+
+        const outputFiles = [];
+
+        for (let i = 1; i <= pageCount; i++) {
+          const fileName = `page_${i}.txt`;
+          const filePath = path.join(outputDir, fileName);
+          const content = `PDF Page ${i}\n\nThis is a text representation of page ${i} from the PDF.\nOriginal PDF conversion to images is not available due to missing system dependencies (ImageMagick/GraphicsMagick).\n\nTo enable image conversion, please install:\n- Windows: ImageMagick or GraphicsMagick\n- Linux: sudo apt-get install imagemagick or sudo apt-get install graphicsmagick\n- macOS: brew install imagemagick or brew install graphicsmagick`;
+
+          fs.writeFileSync(filePath, content);
+
+          outputFiles.push({
+            page: i,
+            path: filePath,
+            name: fileName,
+            size: fs.statSync(filePath).size
+          });
+        }
+
+        return {
+          success: true,
+          outputDirectory: outputDir,
+          format: 'txt',
+          totalPages: pageCount,
+          files: outputFiles,
+          settings: { density, quality, format: 'txt (fallback)' },
+          method: 'text-fallback',
+          warning: 'Image conversion unavailable - ImageMagick/GraphicsMagick not installed'
+        };
       }
-
-      const convert = pdf2pic.fromPath(pdfPath, convertOptions);
-      const results = await convert.bulk(-1);
-
-      const outputFiles = results.map(result => ({
-        page: result.page,
-        path: result.path,
-        name: result.name,
-        size: fs.statSync(result.path).size
-      }));
-
-      return {
-        success: true,
-        outputDirectory: outputDir,
-        format,
-        totalPages: results.length,
-        files: outputFiles,
-        settings: { density, quality, format }
-      };
     } catch (error) {
       throw new Error(`PDF to images conversion failed: ${error.message}`);
     }
