@@ -3,7 +3,7 @@ const path = require('path');
 const { PDFDocument, rgb } = require('pdf-lib');
 const pdf2pic = require('pdf2pic');
 const mammoth = require('mammoth');
-const sharp = require('sharp');
+// const sharp = require('sharp'); // Temporarily disabled due to Windows compatibility issues
 const pdfParse = require('pdf-parse');
 
 class PDFConvertService {
@@ -22,20 +22,11 @@ class PDFConvertService {
           } else if (ext === '.png') {
             image = await pdfDoc.embedPng(imageBytes);
           } else {
-            // Convert other formats to JPEG using Sharp
-            const processedImageBytes = await sharp(imageBytes)
-              .jpeg({ quality: 90 })
-              .toBuffer();
-            image = await pdfDoc.embedJpg(processedImageBytes);
+            // Skip other formats for now due to Sharp compatibility issues
+            throw new Error(`Unsupported image format: ${ext}. Please use JPG or PNG files.`);
           }
         } catch (embedError) {
-          console.warn(`Failed to embed ${imagePath} directly, converting with Sharp:`, embedError.message);
-
-          // Fallback: use Sharp to convert the image to a supported format
-          const convertedImageBytes = await sharp(imageBytes)
-            .jpeg({ quality: 90 })
-            .toBuffer();
-          image = await pdfDoc.embedJpg(convertedImageBytes);
+          throw new Error(`Failed to embed image ${imagePath}: ${embedError.message}. Please ensure the image is a valid JPG or PNG file.`);
         }
 
         const page = pdfDoc.addPage();
