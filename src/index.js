@@ -5,6 +5,26 @@ const path = require('path');
 const fs = require('fs');
 const archiver = require('archiver');
 
+// Get the correct path for static files (works both in development and when packaged)
+const getStaticPath = () => {
+  if (process.pkg) {
+    // When packaged with pkg, assets are in the same directory as the executable
+    return path.join(path.dirname(process.execPath), 'public');
+  }
+  // In development, public folder is in the root
+  return path.join(__dirname, '..', 'public');
+};
+
+// Get the correct path for temporary files
+const getTempPath = () => {
+  if (process.pkg) {
+    // When packaged, create temp in the same directory as executable
+    return path.join(path.dirname(process.execPath), 'temp');
+  }
+  // In development, temp folder is in the root
+  return path.join(__dirname, '..', 'temp');
+};
+
 // Utility function to sanitize filename
 function sanitizeFilename(filename) {
   if (!filename) return 'merged';
@@ -28,22 +48,24 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public'));
+app.use(express.static(getStaticPath()));
 
 // Configure multer for file uploads
+const tempPath = getTempPath();
 const upload = multer({
-  dest: 'temp/',
+  dest: tempPath,
   limits: {
     fileSize: 50 * 1024 * 1024 // 50MB limit
   }
 });
 
 // Ensure temp directory exists
-if (!fs.existsSync('temp')) {
-  fs.mkdirSync('temp');
+if (!fs.existsSync(tempPath)) {
+  fs.mkdirSync(tempPath, { recursive: true });
 }
-if (!fs.existsSync('temp/output')) {
-  fs.mkdirSync('temp/output', { recursive: true });
+const outputPath = path.join(tempPath, 'output');
+if (!fs.existsSync(outputPath)) {
+  fs.mkdirSync(outputPath, { recursive: true });
 }
 
 // Routes
@@ -70,14 +92,14 @@ app.post('/api/merge', upload.array('pdfs'), async (req, res) => {
     }
 
     const filePaths = req.files.map(file => file.path);
-    const outputPath = `temp/output/merged_${Date.now()}.pdf`;
+    const mergedPath = path.join(outputPath, `merged_${Date.now()}.pdf`);
 
     const metadata = {
       title: req.body.title || 'Merged PDF',
       author: req.body.author || 'PDF Tools Self-Hosted'
     };
 
-    const result = await pdfMergeService.mergeWithMetadata(filePaths, outputPath, metadata);
+    const result = await pdfMergeService.mergeWithMetadata(filePaths, mergedPath, metadata);
 
     filePaths.forEach(filePath => {
       if (fs.existsSync(filePath)) {
@@ -90,13 +112,13 @@ app.post('/api/merge', upload.array('pdfs'), async (req, res) => {
     const sanitizedTitle = sanitizeFilename(customTitle);
     const downloadFilename = `${sanitizedTitle}.pdf`;
 
-    res.download(outputPath, downloadFilename, (err) => {
+    res.download(mergedPath, downloadFilename, (err) => {
       if (err) {
         console.error('Download error:', err);
       }
       setTimeout(() => {
-        if (fs.existsSync(outputPath)) {
-          fs.unlinkSync(outputPath);
+        if (fs.existsSync(mergedPath)) {
+          fs.unlinkSync(mergedPath);
         }
       }, 30000);
     });
@@ -114,8 +136,8 @@ app.post('/api/split', upload.single('pdf'), async (req, res) => {
     }
 
     const inputPath = req.file.path;
-    const outputDir = `temp/output/split_${Date.now()}`;
-    fs.mkdirSync(outputDir, { recursive: true });
+    const splitDir = path.join(outputPath, `split_${Date.now()}`);
+    fs.mkdirSync(splitDir, { recursive: true });
 
     let options = {};
 
@@ -125,7 +147,7 @@ app.post('/api/split', upload.single('pdf'), async (req, res) => {
       options.specificPages = JSON.parse(req.body.specificPages);
     }
 
-    const result = await pdfSplitService.splitPDF(inputPath, outputDir, options);
+    const result = await pdfSplitService.splitPDF(inputPath, splitDir, options);
 
     if (fs.existsSync(inputPath)) {
       fs.unlinkSync(inputPath);
@@ -136,14 +158,14 @@ app.post('/api/split', upload.single('pdf'), async (req, res) => {
       res.download(singleFile.outputPath, `page_${singleFile.pageNumber || 'extracted'}.pdf`, (err) => {
         if (err) console.error('Download error:', err);
         setTimeout(() => {
-          if (fs.existsSync(outputDir)) {
-            fs.rmSync(outputDir, { recursive: true, force: true });
+          if (fs.existsSync(splitDir)) {
+            fs.rmSync(splitDir, { recursive: true, force: true });
           }
         }, 30000);
       });
     } else {
       const archive = archiver('zip', { zlib: { level: 9 } });
-      const zipPath = `temp/output/split_pages_${Date.now()}.zip`;
+      const zipPath = path.join(outputPath, `split_pages_${Date.now()}.zip`);
       const output = fs.createWriteStream(zipPath);
 
       archive.pipe(output);
@@ -157,8 +179,8 @@ app.post('/api/split', upload.single('pdf'), async (req, res) => {
       res.download(zipPath, 'split_pages.zip', (err) => {
         if (err) console.error('Download error:', err);
         setTimeout(() => {
-          if (fs.existsSync(outputDir)) {
-            fs.rmSync(outputDir, { recursive: true, force: true });
+          if (fs.existsSync(splitDir)) {
+            fs.rmSync(splitDir, { recursive: true, force: true });
           }
           if (fs.existsSync(zipPath)) {
             fs.unlinkSync(zipPath);
@@ -180,22 +202,22 @@ app.post('/api/compress', upload.single('pdf'), async (req, res) => {
     }
 
     const inputPath = req.file.path;
-    const outputPath = `temp/output/compressed_${Date.now()}.pdf`;
+    const compressedPath = path.join(outputPath, `compressed_${Date.now()}.pdf`);
     const quality = req.body.quality || 'medium';
 
-    const result = await pdfCompressService.compressPDF(inputPath, outputPath, quality);
+    const result = await pdfCompressService.compressPDF(inputPath, compressedPath, quality);
 
     if (fs.existsSync(inputPath)) {
       fs.unlinkSync(inputPath);
     }
 
-    res.download(outputPath, 'compressed.pdf', (err) => {
+    res.download(compressedPath, 'compressed.pdf', (err) => {
       if (err) {
         console.error('Download error:', err);
       }
       setTimeout(() => {
-        if (fs.existsSync(outputPath)) {
-          fs.unlinkSync(outputPath);
+        if (fs.existsSync(compressedPath)) {
+          fs.unlinkSync(compressedPath);
         }
       }, 30000);
     });
@@ -214,18 +236,18 @@ app.post('/api/convert/to-pdf', upload.array('files'), async (req, res) => {
 
     const file = req.files[0];
     const ext = path.extname(file.originalname).toLowerCase();
-    const outputPath = `temp/output/converted_${Date.now()}.pdf`;
+    const convertedPath = path.join(outputPath, `converted_${Date.now()}.pdf`);
 
     let result;
 
     if (['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff'].includes(ext)) {
       const filePaths = req.files.map(f => f.path);
-      result = await pdfConvertService.imageToPDF(filePaths, outputPath, {
+      result = await pdfConvertService.imageToPDF(filePaths, convertedPath, {
         title: req.body.title || 'Converted Images',
         author: req.body.author || 'PDF Tools Self-Hosted'
       });
     } else if (ext === '.docx') {
-      result = await pdfConvertService.wordToPDF(file.path, outputPath);
+      result = await pdfConvertService.wordToPDF(file.path, convertedPath);
     } else {
       return res.status(400).json({ error: 'Unsupported file format' });
     }
@@ -236,11 +258,11 @@ app.post('/api/convert/to-pdf', upload.array('files'), async (req, res) => {
       }
     });
 
-    res.download(outputPath, 'converted.pdf', (err) => {
+    res.download(convertedPath, 'converted.pdf', (err) => {
       if (err) console.error('Download error:', err);
       setTimeout(() => {
-        if (fs.existsSync(outputPath)) {
-          fs.unlinkSync(outputPath);
+        if (fs.existsSync(convertedPath)) {
+          fs.unlinkSync(convertedPath);
         }
       }, 30000);
     });
@@ -263,10 +285,10 @@ app.post('/api/convert/from-pdf', upload.single('pdf'), async (req, res) => {
     let result;
 
     if (['png', 'jpeg', 'gif'].includes(convertTo)) {
-      const outputDir = `temp/output/pdf_to_images_${Date.now()}`;
-      fs.mkdirSync(outputDir, { recursive: true });
+      const imagesDir = path.join(outputPath, `pdf_to_images_${Date.now()}`);
+      fs.mkdirSync(imagesDir, { recursive: true });
 
-      result = await pdfConvertService.pdfToImages(inputPath, outputDir, {
+      result = await pdfConvertService.pdfToImages(inputPath, imagesDir, {
         format: convertTo,
         density: parseInt(req.body.density) || 300,
         quality: parseInt(req.body.quality) || 90
@@ -277,7 +299,7 @@ app.post('/api/convert/from-pdf', upload.single('pdf'), async (req, res) => {
       }
 
       const archive = archiver('zip', { zlib: { level: 9 } });
-      const zipPath = `temp/output/pdf_images_${Date.now()}.zip`;
+      const zipPath = path.join(outputPath, `pdf_images_${Date.now()}.zip`);
       const output = fs.createWriteStream(zipPath);
 
       archive.pipe(output);
@@ -291,8 +313,8 @@ app.post('/api/convert/from-pdf', upload.single('pdf'), async (req, res) => {
       res.download(zipPath, `pdf_images.zip`, (err) => {
         if (err) console.error('Download error:', err);
         setTimeout(() => {
-          if (fs.existsSync(outputDir)) {
-            fs.rmSync(outputDir, { recursive: true, force: true });
+          if (fs.existsSync(imagesDir)) {
+            fs.rmSync(imagesDir, { recursive: true, force: true });
           }
           if (fs.existsSync(zipPath)) {
             fs.unlinkSync(zipPath);
@@ -301,18 +323,18 @@ app.post('/api/convert/from-pdf', upload.single('pdf'), async (req, res) => {
       });
 
     } else if (convertTo === 'txt') {
-      const outputPath = `temp/output/extracted_text_${Date.now()}.txt`;
-      result = await pdfConvertService.pdfToText(inputPath, outputPath);
+      const textPath = path.join(outputPath, `extracted_text_${Date.now()}.txt`);
+      result = await pdfConvertService.pdfToText(inputPath, textPath);
 
       if (fs.existsSync(inputPath)) {
         fs.unlinkSync(inputPath);
       }
 
-      res.download(outputPath, 'extracted_text.txt', (err) => {
+      res.download(textPath, 'extracted_text.txt', (err) => {
         if (err) console.error('Download error:', err);
         setTimeout(() => {
-          if (fs.existsSync(outputPath)) {
-            fs.unlinkSync(outputPath);
+          if (fs.existsSync(textPath)) {
+            fs.unlinkSync(textPath);
           }
         }, 30000);
       });

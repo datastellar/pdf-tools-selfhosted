@@ -18,7 +18,9 @@
       "Bash(node:*)",
       "Bash(cmd /c:*)",
       "Bash(npm install:*)",
-      "Bash(npm rebuild:*)"
+      "Bash(npm rebuild:*)",
+      "Bash(npm run build:exe:*)",
+      "Bash(npm:*)"
     ],
     "deny": [],
     "ask": []
