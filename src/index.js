@@ -70,52 +70,61 @@ if (!fs.existsSync(outputPath)) {
 
 // Routes
 app.get('/', (req, res) => {
-  res.json({
-    message: 'PDF Tools Self-Hosted API',
-    version: '1.0.0',
-    endpoints: [
-      'POST /api/merge - Merge multiple PDF files',
-      'POST /api/split - Split PDF file',
-      'POST /api/compress - Compress PDF file',
-      'POST /api/convert/to-pdf - Convert files to PDF',
-      'POST /api/convert/from-pdf - Convert PDF to other formats',
-      'GET /api/health - Health check'
-    ]
-  });
+  const staticPath = getStaticPath();
+  const indexPath = path.join(staticPath, 'index.html');
+
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.json({
+      message: 'PDF Tools Self-Hosted API',
+      version: '1.0.0',
+      endpoints: [
+        'POST /api/merge - Merge multiple PDF files',
+        'POST /api/split - Split PDF file',
+        'POST /api/compress - Compress PDF file',
+        'POST /api/convert/to-pdf - Convert files to PDF',
+        'POST /api/convert/from-pdf - Convert PDF to other formats',
+        'GET /api/health - Health check'
+      ]
+    });
+  }
 });
 
 // PDF Merge endpoint
-app.post('/api/merge', upload.array('pdfs'), async (req, res) => {
+app.post('/api/merge', upload.array('files'), async (req, res) => {
   try {
     if (!req.files || req.files.length < 2) {
       return res.status(400).json({ error: 'At least 2 PDF files are required' });
     }
 
     const filePaths = req.files.map(file => file.path);
-    const mergedPath = path.join(outputPath, `merged_${Date.now()}.pdf`);
+    const customFilename = req.body.filename || 'merged';
+    const timestamp = Date.now();
+    const sanitizedFilename = sanitizeFilename(customFilename);
+    const mergedPath = path.join(outputPath, `${sanitizedFilename}_${timestamp}.pdf`);
 
     const metadata = {
-      title: req.body.title || 'Merged PDF',
-      author: req.body.author || 'PDF Tools Self-Hosted'
+      title: sanitizedFilename,
+      author: 'PDF Tools Self-Hosted'
     };
 
     const result = await pdfMergeService.mergeWithMetadata(filePaths, mergedPath, metadata);
 
+    // Clean up uploaded files
     filePaths.forEach(filePath => {
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
       }
     });
 
-    // Generate custom filename from title
-    const customTitle = req.body.title || 'Merged PDF';
-    const sanitizedTitle = sanitizeFilename(customTitle);
-    const downloadFilename = `${sanitizedTitle}.pdf`;
+    const downloadFilename = `${sanitizedFilename}.pdf`;
 
     res.download(mergedPath, downloadFilename, (err) => {
       if (err) {
         console.error('Download error:', err);
       }
+      // Clean up merged file after download
       setTimeout(() => {
         if (fs.existsSync(mergedPath)) {
           fs.unlinkSync(mergedPath);
@@ -124,27 +133,39 @@ app.post('/api/merge', upload.array('pdfs'), async (req, res) => {
     });
 
   } catch (error) {
+    // Clean up files on error
+    if (req.files) {
+      req.files.forEach(file => {
+        if (fs.existsSync(file.path)) {
+          fs.unlinkSync(file.path);
+        }
+      });
+    }
     res.status(500).json({ error: error.message });
   }
 });
 
 // PDF Split endpoint
-app.post('/api/split', upload.single('pdf'), async (req, res) => {
+app.post('/api/split', upload.array('files'), async (req, res) => {
   try {
-    if (!req.file) {
+    if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'PDF file is required' });
     }
 
-    const inputPath = req.file.path;
+    const inputPath = req.files[0].path; // Use first file for split
     const splitDir = path.join(outputPath, `split_${Date.now()}`);
     fs.mkdirSync(splitDir, { recursive: true });
 
     let options = {};
+    const splitMode = req.body.mode || 'pages';
 
-    if (req.body.pageRanges) {
-      options.pageRanges = JSON.parse(req.body.pageRanges);
-    } else if (req.body.specificPages) {
-      options.specificPages = JSON.parse(req.body.specificPages);
+    if (splitMode === 'range' && req.body.range) {
+      // Parse page range like "1-5" or "1-5,10-15"
+      const ranges = req.body.range.split(',').map(r => r.trim());
+      options.pageRanges = ranges.map(range => {
+        const [start, end] = range.split('-').map(n => parseInt(n.trim()));
+        return { start: start, end: end || start };
+      });
     }
 
     const result = await pdfSplitService.splitPDF(inputPath, splitDir, options);
