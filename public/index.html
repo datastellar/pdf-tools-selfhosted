@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Tools Self-Hosted</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <i class="fas fa-file-pdf"></i>
+                <h1>PDF Tools Self-Hosted</h1>
+            </div>
+            <p class="subtitle">Privacy-first PDF processing tools</p>
+        </header>
+
+        <main class="main">
+            <div class="tools-grid">
+                <!-- PDF Merge Tool -->
+                <div class="tool-card" data-tool="merge">
+                    <div class="tool-icon">
+                        <i class="fas fa-object-group"></i>
+                    </div>
+                    <h2>Merge PDFs</h2>
+                    <p>Combine multiple PDF files into a single document</p>
+                    <button class="tool-btn" onclick="selectTool('merge')">
+                        <i class="fas fa-arrow-right"></i> Select Tool
+                    </button>
+                </div>
+
+                <!-- PDF Split Tool -->
+                <div class="tool-card" data-tool="split">
+                    <div class="tool-icon">
+                        <i class="fas fa-cut"></i>
+                    </div>
+                    <h2>Split PDF</h2>
+                    <p>Split PDF into separate pages or specific ranges</p>
+                    <button class="tool-btn" onclick="selectTool('split')">
+                        <i class="fas fa-arrow-right"></i> Select Tool
+                    </button>
+                </div>
+
+                <!-- PDF Compress Tool -->
+                <div class="tool-card" data-tool="compress">
+                    <div class="tool-icon">
+                        <i class="fas fa-compress"></i>
+                    </div>
+                    <h2>Compress PDF</h2>
+                    <p>Reduce PDF file size while maintaining quality</p>
+                    <button class="tool-btn" onclick="selectTool('compress')">
+                        <i class="fas fa-arrow-right"></i> Select Tool
+                    </button>
+                </div>
+
+                <!-- PDF Convert Tool -->
+                <div class="tool-card" data-tool="convert">
+                    <div class="tool-icon">
+                        <i class="fas fa-exchange-alt"></i>
+                    </div>
+                    <h2>Convert PDF</h2>
+                    <p>Convert PDF to images and other formats</p>
+                    <button class="tool-btn" onclick="selectTool('convert')">
+                        <i class="fas fa-arrow-right"></i> Select Tool
+                    </button>
+                </div>
+            </div>
+
+            <!-- File Upload Area -->
+            <div id="upload-section" class="upload-section hidden">
+                <div class="back-btn" onclick="backToHome()">
+                    <i class="fas fa-arrow-left"></i> Back to Tools
+                </div>
+
+                <div class="tool-header">
+                    <div class="tool-icon-small">
+                        <i id="current-tool-icon" class="fas fa-file-pdf"></i>
+                    </div>
+                    <h2 id="current-tool-title">PDF Tool</h2>
+                    <p id="current-tool-desc">Process your PDF files</p>
+                </div>
+
+                <div id="upload-area" class="upload-area">
+                    <div class="upload-content">
+                        <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                        <p class="upload-text">Drag & drop your PDF files here</p>
+                        <p class="upload-subtext">or</p>
+                        <button class="browse-btn" onclick="document.getElementById('fileInput').click()">
+                            <i class="fas fa-folder-open"></i> Browse Files
+                        </button>
+                        <input type="file" id="fileInput" multiple accept=".pdf" style="display: none;">
+                        <p class="file-info">Supports PDF files up to 50MB</p>
+                    </div>
+                </div>
+
+                <!-- Tool-specific options -->
+                <div id="tool-options" class="tool-options hidden">
+                    <!-- Merge options -->
+                    <div id="merge-options" class="options-panel hidden">
+                        <div class="option-group">
+                            <label for="merge-filename">Output filename (optional):</label>
+                            <input type="text" id="merge-filename" placeholder="merged-document">
+                        </div>
+                    </div>
+
+                    <!-- Split options -->
+                    <div id="split-options" class="options-panel hidden">
+                        <div class="option-group">
+                            <label>Split mode:</label>
+                            <div class="radio-group">
+                                <label class="radio-option">
+                                    <input type="radio" name="splitMode" value="pages" checked>
+                                    <span>All pages separately</span>
+                                </label>
+                                <label class="radio-option">
+                                    <input type="radio" name="splitMode" value="range">
+                                    <span>Page range</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div id="range-input" class="option-group hidden">
+                            <label for="page-range">Page range (e.g., 1-5, 10-15):</label>
+                            <input type="text" id="page-range" placeholder="1-5">
+                        </div>
+                    </div>
+
+                    <!-- Compress options -->
+                    <div id="compress-options" class="options-panel hidden">
+                        <div class="option-group">
+                            <label for="quality">Quality level:</label>
+                            <select id="quality">
+                                <option value="high">High (minimal compression)</option>
+                                <option value="medium" selected>Medium (balanced)</option>
+                                <option value="low">Low (maximum compression)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Convert options -->
+                    <div id="convert-options" class="options-panel hidden">
+                        <div class="option-group">
+                            <label for="format">Output format:</label>
+                            <select id="format">
+                                <option value="jpg">JPEG Images</option>
+                                <option value="png">PNG Images</option>
+                                <option value="webp">WebP Images</option>
+                            </select>
+                        </div>
+                        <div class="option-group">
+                            <label for="dpi">DPI (quality):</label>
+                            <select id="dpi">
+                                <option value="72">72 DPI (web)</option>
+                                <option value="150" selected>150 DPI (standard)</option>
+                                <option value="300">300 DPI (high quality)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- File list -->
+                <div id="file-list" class="file-list hidden"></div>
+
+                <!-- Process button -->
+                <button id="process-btn" class="process-btn hidden" onclick="processFiles()">
+                    <i class="fas fa-cog"></i> Process Files
+                </button>
+
+                <!-- Progress -->
+                <div id="progress-section" class="progress-section hidden">
+                    <div class="progress-bar">
+                        <div id="progress-fill" class="progress-fill"></div>
+                    </div>
+                    <p id="progress-text" class="progress-text">Processing...</p>
+                </div>
+
+                <!-- Results -->
+                <div id="results-section" class="results-section hidden">
+                    <div class="results-header">
+                        <i class="fas fa-check-circle success-icon"></i>
+                        <h3>Processing Complete!</h3>
+                    </div>
+                    <div id="download-links" class="download-links"></div>
+                    <button class="new-task-btn" onclick="startNewTask()">
+                        <i class="fas fa-plus"></i> Process More Files
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>&copy; 2024 PDF Tools Self-Hosted | Privacy-first PDF processing</p>
+        </footer>
+    </div>
+
+    <!-- Loading overlay -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="loading-spinner">
+            <i class="fas fa-spinner fa-spin"></i>
+        </div>
+        <p class="loading-text">Processing your files...</p>
+    </div>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>

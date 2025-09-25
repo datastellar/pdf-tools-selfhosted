@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Tools Self-Hosted - Preview</title>
+
+    <!-- Inline CSS for standalone preview -->
+    <style>
+        /* Reset and base styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header styles */
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+            padding: 2rem 0;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .logo .icon {
+            font-size: 3rem;
+            color: #fff;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #fff;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            color: rgba(255,255,255,0.9);
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        }
+
+        /* Main content */
+        .main {
+            flex: 1;
+        }
+
+        /* Tools grid */
+        .tools-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .tool-card {
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255,255,255,0.2);
+            cursor: pointer;
+        }
+
+        .tool-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 48px rgba(0,0,0,0.15);
+            background: rgba(255,255,255,1);
+        }
+
+        .tool-icon {
+            margin-bottom: 1.5rem;
+        }
+
+        .tool-icon .icon {
+            font-size: 3rem;
+            color: #667eea;
+            transition: all 0.3s ease;
+        }
+
+        .tool-card:hover .tool-icon .icon {
+            color: #5a67d8;
+            transform: scale(1.1);
+        }
+
+        .tool-card h2 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: #2d3748;
+        }
+
+        .tool-card p {
+            color: #718096;
+            margin-bottom: 2rem;
+            line-height: 1.5;
+        }
+
+        .tool-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .tool-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4);
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 2rem 0;
+            color: rgba(255,255,255,0.8);
+            margin-top: auto;
+        }
+
+        /* Demo notification */
+        .demo-notice {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 1rem 2rem;
+            margin-bottom: 2rem;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .demo-notice h3 {
+            color: #fff;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Unicode icons for fallback */
+        .icon-pdf::before { content: '📄'; }
+        .icon-merge::before { content: '📋'; }
+        .icon-split::before { content: '✂️'; }
+        .icon-compress::before { content: '🗜️'; }
+        .icon-convert::before { content: '🔄'; }
+        .icon-arrow::before { content: '➡️'; }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .tools-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+
+            .tool-card {
+                padding: 1.5rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .header h1 {
+                font-size: 1.5rem;
+            }
+
+            .subtitle {
+                font-size: 1rem;
+            }
+
+            .tool-card {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="demo-notice">
+            <h3>🎨 Frontend Preview Mode</h3>
+            <p>Ini adalah preview standalone dari web interface. Untuk functionality penuh, gunakan Live Server atau npm start.</p>
+        </div>
+
+        <header class="header">
+            <div class="logo">
+                <div class="icon icon-pdf"></div>
+                <h1>PDF Tools Self-Hosted</h1>
+            </div>
+            <p class="subtitle">Privacy-first PDF processing tools</p>
+        </header>
+
+        <main class="main">
+            <div class="tools-grid">
+                <!-- PDF Merge Tool -->
+                <div class="tool-card" onclick="showDemo('merge')">
+                    <div class="tool-icon">
+                        <div class="icon icon-merge"></div>
+                    </div>
+                    <h2>Merge PDFs</h2>
+                    <p>Combine multiple PDF files into a single document</p>
+                    <button class="tool-btn">
+                        <span class="icon icon-arrow"></span> Select Tool
+                    </button>
+                </div>
+
+                <!-- PDF Split Tool -->
+                <div class="tool-card" onclick="showDemo('split')">
+                    <div class="tool-icon">
+                        <div class="icon icon-split"></div>
+                    </div>
+                    <h2>Split PDF</h2>
+                    <p>Split PDF into separate pages or specific ranges</p>
+                    <button class="tool-btn">
+                        <span class="icon icon-arrow"></span> Select Tool
+                    </button>
+                </div>
+
+                <!-- PDF Compress Tool -->
+                <div class="tool-card" onclick="showDemo('compress')">
+                    <div class="tool-icon">
+                        <div class="icon icon-compress"></div>
+                    </div>
+                    <h2>Compress PDF</h2>
+                    <p>Reduce PDF file size while maintaining quality</p>
+                    <button class="tool-btn">
+                        <span class="icon icon-arrow"></span> Select Tool
+                    </button>
+                </div>
+
+                <!-- PDF Convert Tool -->
+                <div class="tool-card" onclick="showDemo('convert')">
+                    <div class="tool-icon">
+                        <div class="icon icon-convert"></div>
+                    </div>
+                    <h2>Convert PDF</h2>
+                    <p>Convert PDF to images and other formats</p>
+                    <button class="tool-btn">
+                        <span class="icon icon-arrow"></span> Select Tool
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>&copy; 2024 PDF Tools Self-Hosted | Privacy-first PDF processing</p>
+            <p style="margin-top: 0.5rem; font-size: 0.9rem; opacity: 0.8;">
+                Preview Mode - For full functionality, use Live Server or start the application
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        // Simple demo functionality
+        function showDemo(tool) {
+            const toolNames = {
+                'merge': 'PDF Merge',
+                'split': 'PDF Split',
+                'compress': 'PDF Compress',
+                'convert': 'PDF Convert'
+            };
+
+            alert(`🎨 Preview Mode\n\nClicked: ${toolNames[tool]}\n\nIni adalah preview mode. Untuk functionality penuh:\n1. Install Live Server extension\n2. Right-click index.html → "Open with Live Server"\n3. Atau jalankan "npm start" untuk full app`);
+        }
+
+        // Add some interactive effects
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🎨 PDF Tools Frontend Preview Loaded!');
+            console.log('📄 File: preview-standalone.html');
+            console.log('✨ Features: Responsive design, hover effects, gradient background');
+            console.log('🚀 Next step: Try Live Server for full experience!');
+        });
+    </script>
+</body>
+</html>

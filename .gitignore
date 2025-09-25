@@ -84,7 +84,7 @@ dist
 
 # Gatsby files
 .cache/
-public
+# public - REMOVED: This is our frontend folder, should be tracked!
 
 # Storybook build outputs
 .out
@@ -181,3 +181,16 @@ config/production.json
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Documentation files (keep local, ignore from git for webapp focus)
+*-GUIDE.md
+PROJECT-STATUS.md
+TESTING_REPORT.md
+USER-GUIDE.md
+DEPLOYMENT-GUIDE.md
+QUICK-FIX-GUIDE.md
+FRONTEND-PREVIEW-GUIDE.md
+
+# Installer files (not needed for webapp)
+installers/
+create_test_files.js
